@@ -39,7 +39,7 @@
 **Phase 2**
 - Comments (nested), likes
 - Reading time, view counter, "related posts"
-- Admin dashboard with users, posts, comment moderation, and basic stats
+- Admin panel (`/admin`) with users, posts, categories, tags, comment moderation, and basic stats
 
 **Phase 3 (nice to have)**
 - Scheduled publishing
@@ -147,38 +147,74 @@ model Like {
 
 ## 4. Folder Structure
 
+One Next.js app, split into two clear areas: **`frontend`** (the public blog that readers see) and **`admin`** (the admin panel at `/admin`). The same split is used in `app/`, `components/`, and `actions/`. Code both areas need lives in the shared folders (`components/ui`, `lib/`, `prisma/`).
+
+Next.js **route groups** (folders in parentheses) keep the code apart without changing URLs: `(frontend)/blog/[slug]` is still `/blog/my-post`. Each group has its own `layout.tsx`, so the public site and the admin panel get completely different layouts (header/footer vs. sidebar).
+
 ```
 src/
 ├─ app/
-│  ├─ (public)/
-│  │  ├─ page.tsx                 # Home feed
-│  │  ├─ blog/[slug]/page.tsx     # Post detail
-│  │  ├─ category/[slug]/page.tsx
-│  │  ├─ tag/[slug]/page.tsx
-│  │  ├─ author/[id]/page.tsx
-│  │  └─ search/page.tsx
-│  ├─ (auth)/login/ & register/
-│  ├─ dashboard/                  # Author area (protected)
-│  │  ├─ posts/ (list, new, [id]/edit)
-│  │  └─ settings/
-│  ├─ admin/                      # Admin only
-│  ├─ api/auth/[...nextauth]/route.ts
-│  ├─ api/upload/route.ts         # Validates, resizes, and saves to UPLOAD_DIR
-│  ├─ uploads/[...path]/route.ts  # Serves uploaded files in development
+│  ├─ (frontend)/                     # ── PUBLIC SITE ──
+│  │  ├─ layout.tsx                   # Header, footer, ⌘K search
+│  │  ├─ page.tsx                     # Home feed            → /
+│  │  ├─ blog/[slug]/page.tsx         # Post detail          → /blog/my-post
+│  │  ├─ category/[slug]/page.tsx     #                      → /category/news
+│  │  ├─ tag/[slug]/page.tsx          #                      → /tag/nextjs
+│  │  ├─ author/[id]/page.tsx         # Author profile
+│  │  ├─ search/page.tsx
+│  │  ├─ login/page.tsx
+│  │  └─ register/page.tsx
+│  │
+│  ├─ (admin)/admin/                  # ── ADMIN PANEL ── (AUTHOR + ADMIN only)
+│  │  ├─ layout.tsx                   # Sidebar + top bar, checks the role
+│  │  ├─ page.tsx                     # Overview / stats     → /admin
+│  │  ├─ posts/page.tsx               # Post list            → /admin/posts
+│  │  ├─ posts/new/page.tsx           # Tiptap editor
+│  │  ├─ posts/[id]/edit/page.tsx
+│  │  ├─ categories/page.tsx          # ADMIN only
+│  │  ├─ tags/page.tsx                # ADMIN only
+│  │  ├─ comments/page.tsx            # Moderation, ADMIN only
+│  │  ├─ users/page.tsx               # Users and roles, ADMIN only
+│  │  └─ settings/page.tsx            # Own profile
+│  │
+│  ├─ api/                            # ── SHARED ──
+│  │  ├─ auth/[...nextauth]/route.ts
+│  │  └─ upload/route.ts              # Validates, resizes, saves to UPLOAD_DIR
+│  ├─ uploads/[...path]/route.ts      # Serves uploaded files in development
 │  ├─ sitemap.ts, robots.ts, rss.xml/route.ts
-│  └─ layout.tsx
-├─ components/  (ui/, post/, editor/, layout/)
-├─ lib/         (prisma.ts, auth.ts, utils.ts, storage.ts, validations/)
-├─ actions/     (post.ts, comment.ts, like.ts): Server Actions
-└─ prisma/      (schema.prisma, seed.ts)
-middleware.ts         # Protects /dashboard and /admin
-public/               # Static assets: logo.svg, favicon.ico, default-avatar.png, default-cover.jpg, og-default.png
-uploads/              # User uploads in development (gitignored)
-ecosystem.config.js   # PM2 config for the VPS
+│  ├─ layout.tsx                      # Root layout: <html>, fonts, globals.css
+│  └─ globals.css
+│
+├─ components/
+│  ├─ frontend/                       # PostCard, Hero, CategoryBar, TableOfContents,
+│  │                                  # ReadingProgress, CommentList, LikeButton, Header, Footer
+│  ├─ admin/                          # Sidebar, DataTable, PostForm, Editor (Tiptap),
+│  │                                  # ImageUpload, StatsCard, RoleSelect
+│  └─ ui/                             # shadcn/ui primitives used by both
+│
+├─ actions/                           # Server Actions
+│  ├─ frontend/                       # comment.ts, like.ts, view.ts
+│  └─ admin/                          # post.ts, category.ts, tag.ts, comment.ts (moderate), user.ts
+│
+├─ lib/                               # Shared: prisma.ts, auth.ts, storage.ts, utils.ts,
+│                                     # permissions.ts, validations/
+└─ middleware.ts                      # Redirects /admin/* to /login if not AUTHOR or ADMIN
+
+prisma/              # schema.prisma, migrations/, seed.ts
+public/              # Static assets: logo.svg, favicon.ico, default-avatar.png, default-cover.jpg, og-default.png
+uploads/             # User uploads in development (gitignored)
+ecosystem.config.js  # PM2 config for the VPS
 deploy/
-├─ nginx-blog.conf    # Nginx site config (copied to the server)
-└─ deploy.sh          # Pull, install, migrate, build, reload
+├─ nginx-blog.conf   # Nginx site config (copied to the server)
+└─ deploy.sh         # Pull, install, migrate, build, reload
 ```
+
+**Rules that keep it clean**
+- `frontend/` code never imports from `admin/`, and `admin/` never imports from `frontend/`. Anything both need moves to `components/ui` or `lib/`.
+- The admin panel replaces a separate author "dashboard": **AUTHOR** users see and edit only their own posts, **ADMIN** users see everything. `lib/permissions.ts` holds these checks (`canEditPost(user, post)`, `requireAdmin()`).
+- Access is checked in three layers: `middleware.ts` (fast redirect), `(admin)/admin/layout.tsx` (role check before rendering), and **every admin Server Action** (the real security boundary).
+- Admin pages are dynamic and never cached. Admin actions call `revalidateTag` / `revalidatePath` so the frontend updates right after a post is published or edited.
+- Add `robots: { index: false }` metadata in the admin layout and `Disallow: /admin` in `robots.ts`.
 
 ## 5. Modern UI/UX Direction
 
@@ -195,11 +231,11 @@ deploy/
 |---|---|
 | **1: Setup** | `create-next-app`, Tailwind, shadcn/ui, install MySQL 8 locally, Prisma schema, first migration, seed script, ESLint/Prettier |
 | **2: Auth** | Auth.js with the Prisma adapter, credentials (bcrypt) and GitHub OAuth, role-based middleware |
-| **3: Posts CRUD** | Dashboard, Tiptap editor, Zod validation, slug and reading-time helpers, local image upload (sharp → `UPLOAD_DIR`) with the serving route, draft/publish |
-| **4: Public site** | Home feed with pagination, post page, category/tag/author pages, ISR/caching with `revalidateTag` |
+| **3: Posts CRUD** | Admin panel layout (`(admin)/admin`, sidebar, role checks), post list, Tiptap editor, Zod validation, slug and reading-time helpers, local image upload (sharp → `UPLOAD_DIR`) with the serving route, draft/publish |
+| **4: Frontend** | `(frontend)` layout (header, footer), home feed with pagination, post page, category/tag/author pages, ISR/caching with `revalidateTag` |
 | **5: Engagement** | Comments, likes with optimistic UI, view counter |
 | **6: Search & SEO** | FULLTEXT search, `generateMetadata`, dynamic OG images, sitemap, RSS |
-| **7: Admin** | User and role management, post and comment moderation, stats cards |
+| **7: Admin panel (ADMIN features)** | `/admin/users` (roles), `/admin/categories`, `/admin/tags`, `/admin/comments` moderation, stats cards on `/admin` |
 | **8: Polish & Deploy** | Tests (Vitest + Playwright), Lighthouse performance pass, set up the Hostinger VPS (section 10): Node + PM2, MySQL, Nginx + Certbot HTTPS, point the domain to it, `deploy.sh` + GitHub Actions auto-deploy, nightly backups of MySQL + uploads |
 
 ## 7. Key Technical Decisions
