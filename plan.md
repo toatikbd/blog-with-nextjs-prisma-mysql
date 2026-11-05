@@ -198,9 +198,11 @@ src/
 │
 ├─ lib/                               # Shared: prisma.ts, auth.ts, storage.ts, utils.ts,
 │                                     # permissions.ts, validations/
-└─ middleware.ts                      # Redirects /admin/* to /login if not AUTHOR or ADMIN
+├─ generated/prisma/                  # Prisma client (generated, gitignored)
+└─ proxy.ts                           # Redirects /admin/* to /login if not AUTHOR or ADMIN (Next 16 name for middleware)
 
 prisma/              # schema.prisma, migrations/, seed.ts
+prisma.config.ts     # Prisma 7 config: database URL, migrations path, seed command
 public/              # Static assets: logo.svg, favicon.ico, default-avatar.png, default-cover.jpg, og-default.png
 uploads/             # User uploads in development (gitignored)
 ecosystem.config.js  # PM2 config for the VPS
@@ -212,8 +214,8 @@ deploy/
 **Rules that keep it clean**
 - `frontend/` code never imports from `admin/`, and `admin/` never imports from `frontend/`. Anything both need moves to `components/ui` or `lib/`.
 - The admin panel replaces a separate author "dashboard": **AUTHOR** users see and edit only their own posts, **ADMIN** users see everything. `lib/permissions.ts` holds these checks (`canEditPost(user, post)`, `requireAdmin()`).
-- Access is checked in three layers: `middleware.ts` (fast redirect), `(admin)/admin/layout.tsx` (role check before rendering), and **every admin Server Action** (the real security boundary).
-- Admin pages are dynamic and never cached. Admin actions call `revalidateTag` / `revalidatePath` so the frontend updates right after a post is published or edited.
+- Access is checked in three layers: `proxy.ts` (fast redirect), `(admin)/admin/layout.tsx` (role check before rendering), and **every admin Server Action** (the real security boundary).
+- Admin pages are dynamic and never cached. Admin actions call `updateTag` / `revalidatePath` so the frontend updates right after a post is published or edited.
 - Add `robots: { index: false }` metadata in the admin layout and `Disallow: /admin` in `robots.ts`.
 
 ## 5. Modern UI/UX Direction
@@ -230,9 +232,9 @@ deploy/
 | Week | Tasks |
 |---|---|
 | **1: Setup** | `create-next-app`, Tailwind, shadcn/ui, install MySQL 8 locally, Prisma schema, first migration, seed script, ESLint/Prettier |
-| **2: Auth** | Auth.js with the Prisma adapter, credentials (bcrypt) and GitHub OAuth, role-based middleware |
+| **2: Auth** | Auth.js with the Prisma adapter, credentials (bcrypt) and GitHub OAuth, role-based `proxy.ts` |
 | **3: Posts CRUD** | Admin panel layout (`(admin)/admin`, sidebar, role checks), post list, Tiptap editor, Zod validation, slug and reading-time helpers, local image upload (sharp → `UPLOAD_DIR`) with the serving route, draft/publish |
-| **4: Frontend** | `(frontend)` layout (header, footer), home feed with pagination, post page, category/tag/author pages, ISR/caching with `revalidateTag` |
+| **4: Frontend** | `(frontend)` layout (header, footer), home feed with pagination, post page, category/tag/author pages, caching with `"use cache"` + `cacheTag` |
 | **5: Engagement** | Comments, likes with optimistic UI, view counter |
 | **6: Search & SEO** | FULLTEXT search, `generateMetadata`, dynamic OG images, sitemap, RSS |
 | **7: Admin panel (ADMIN features)** | `/admin/users` (roles), `/admin/categories`, `/admin/tags`, `/admin/comments` moderation, stats cards on `/admin` |
@@ -241,10 +243,10 @@ deploy/
 ## 7. Key Technical Decisions
 
 - **Rendering:** fetch data in Server Components; post pages use static generation with on-demand revalidation when a post is published or updated.
-- **Mutations:** use Server Actions with `revalidatePath` and `revalidateTag`. API routes are only for uploads and auth.
+- **Mutations:** use Server Actions with `updateTag` (immediate) or `revalidateTag(tag, "max")` and `revalidatePath`. API routes are only for uploads and auth.
 - **Image storage:** `lib/storage.ts` wraps save and delete for files (`saveImage(file) → url`, `deleteImage(url)`), so moving to S3 or Cloudflare R2 later only means rewriting that one file.
 - **Upload safety:** check the real file type from the magic bytes, not the extension. Generate filenames server-side (never use the user's filename). Reject `..` in the serving route to block path traversal. Only `AUTHOR`/`ADMIN` can upload, and uploads are rate-limited.
-- **Prisma client:** use a singleton in `lib/prisma.ts` so hot reload doesn't open too many connections.
+- **Prisma client:** use a singleton in `lib/prisma.ts` (with the MariaDB driver adapter) so hot reload doesn't open too many connections.
 - **Security:** sanitize HTML output (DOMPurify / `sanitize-html`), check auth and ownership inside every action, rate-limit comments and logins, and keep secrets in `.env`.
 - **Pagination:** cursor-based, using `publishedAt` + `id`.
 
@@ -281,18 +283,25 @@ NEXT_PUBLIC_SITE_URL="https://yourdomain.com"
 1. Install **Node.js 22 LTS** and **MySQL 8 Community Server** (MySQL Installer for Windows; set a root password and keep port 3306).
 2. Create the database:
    ```bash
-   mysql -u root -p -e "CREATE DATABASE blog CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+   mysql -u root -p -e "CREATE DATABASE blog_with_prisma CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
    ```
-3. Create the project:
+3. The project is already scaffolded (Next.js 16, Prisma 7, shadcn/ui, Tailwind v4). After cloning:
    ```bash
-   npx create-next-app@latest . --ts --tailwind --app --src-dir --eslint
-   npm i prisma @prisma/client next-auth@beta @auth/prisma-adapter zod bcryptjs sharp file-type
-   mkdir uploads && echo "uploads/" >> .gitignore
-   npx prisma init --datasource-provider mysql
-   npx shadcn@latest init
-   npx prisma migrate dev --name init
+   npm install                 # also runs `prisma generate`
+   cp .env.example .env        # then fill in DATABASE_URL and the SEED_ADMIN_* values
+   npm run db:migrate -- --name init
+   npm run db:seed
    npm run dev
    ```
+
+**Useful scripts:** `npm run lint`, `npm run typecheck`, `npm run format`, `npm run db:studio`.
+
+**Version notes (Next.js 16 / Prisma 7):**
+- `middleware.ts` is now **`proxy.ts`** (same API, exported function named `proxy`).
+- `revalidateTag(tag, "max")` needs a second argument. In Server Actions, use **`updateTag(tag)`** when the user must see the change immediately (for example after publishing a post).
+- `cacheComponents` is on, so cached data uses the `"use cache"` directive with `cacheTag()` / `cacheLife()`.
+- Prisma 7 keeps the database URL in `prisma.config.ts` (not in `schema.prisma`), connects to MySQL through the `@prisma/adapter-mariadb` driver adapter, and generates the client into `src/generated/prisma` (gitignored). Import it from `@/generated/prisma/client`.
+- npm 11 asks before running package install scripts. The approved ones are listed under `allowScripts` in `package.json`.
 
 ## 10. Deployment on Hostinger VPS (no Docker)
 
