@@ -1,19 +1,38 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { createPost, type PostFormState } from "@/actions/admin/post";
+import type { PostFormState } from "@/actions/admin/post";
 import { FormField } from "@/components/ui/form-field";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import type { PostStatus } from "@/generated/prisma/enums";
 import { slugify } from "@/lib/slug";
 import { PostEditor } from "./post-editor";
 
 type Option = { id: string; name: string };
+type PostAction = (prev: PostFormState, formData: FormData) => Promise<PostFormState>;
 
-export function PostForm({ categories, tags }: { categories: Option[]; tags: Option[] }) {
-  const [state, action, pending] = useActionState<PostFormState, FormData>(createPost, {});
-  const values = state.values ?? {};
+/**
+ * New-post form, or the edit form when `initial` is given.
+ * `status` is the post's current status, used for the button labels.
+ */
+export function PostForm({
+  action: postAction,
+  categories,
+  tags,
+  initial,
+  status,
+}: {
+  action: PostAction;
+  categories: Option[];
+  tags: Option[];
+  initial?: NonNullable<PostFormState["values"]>;
+  status?: PostStatus;
+}) {
+  const [state, action, pending] = useActionState<PostFormState, FormData>(postAction, {});
+  const values = state.values ?? initial ?? {};
   const errors = state.fieldErrors ?? {};
+  const isPublished = status === "PUBLISHED";
 
   // The slug follows the title until the author edits it by hand.
   const [title, setTitle] = useState(values.title ?? "");
@@ -117,10 +136,10 @@ export function PostForm({ categories, tags }: { categories: Option[]; tags: Opt
 
         <div className="grid gap-2 border-t pt-4">
           <Button type="submit" name="intent" value="publish" disabled={pending}>
-            {pending ? "Saving…" : "Publish"}
+            {pending ? "Saving…" : isPublished ? "Update" : "Publish"}
           </Button>
           <Button type="submit" name="intent" value="draft" variant="outline" disabled={pending}>
-            Save draft
+            {isPublished ? "Unpublish (save as draft)" : "Save draft"}
           </Button>
         </div>
       </aside>

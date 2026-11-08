@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
+import { DeletePostButton } from "@/components/admin/delete-post-button";
 import { buttonVariants } from "@/components/ui/button";
 import { requireStaff } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -46,6 +47,7 @@ async function PostsTable() {
       updatedAt: true,
       author: { select: { name: true, email: true } },
       category: { select: { name: true } },
+      _count: { select: { comments: true } },
     },
   });
 
@@ -70,6 +72,9 @@ async function PostsTable() {
             <th className="px-4 py-3 font-medium">Category</th>
             <th className="px-4 py-3 text-right font-medium">Views</th>
             <th className="px-4 py-3 font-medium">Updated</th>
+            <th className="px-4 py-3">
+              <span className="sr-only">Actions</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -87,6 +92,22 @@ async function PostsTable() {
               <td className="px-4 py-3 text-right tabular-nums">{post.views}</td>
               <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
                 {dateFormat.format(post.updatedAt)}
+              </td>
+              <td className="px-4 py-3">
+                {/* The list only contains posts this user may edit (own posts, or all for admins). */}
+                <div className="flex justify-end gap-2">
+                  <Link
+                    href={`/admin/posts/${post.id}/edit`}
+                    className={buttonVariants({ variant: "outline", size: "sm" })}
+                  >
+                    <Pencil /> Edit
+                  </Link>
+                  <DeletePostButton
+                    id={post.id}
+                    title={post.title}
+                    commentCount={post._count.comments}
+                  />
+                </div>
               </td>
             </tr>
           ))}

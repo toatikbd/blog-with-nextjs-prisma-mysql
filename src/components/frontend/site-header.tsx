@@ -13,9 +13,6 @@ export function SiteHeader() {
           <Link href="/" className="hover:text-foreground">
             Home
           </Link>
-          <Link href="/search" className="hover:text-foreground">
-            Search
-          </Link>
           {/* Reads the session cookie, so it streams in after the static header. */}
           <Suspense fallback={<span className="h-5 w-12 animate-pulse rounded bg-muted" />}>
             <UserNav />

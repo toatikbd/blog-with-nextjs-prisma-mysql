@@ -48,11 +48,14 @@ export function readingTime(text: string): number {
   return Math.max(1, Math.round(words / 200));
 }
 
-/** Returns `base`, or `base-2`, `base-3`, … if the slug is already taken. */
-export async function uniqueSlug(input: string): Promise<string> {
+/**
+ * Returns `base`, or `base-2`, `base-3`, … if the slug is already taken.
+ * Pass `excludeId` when editing so a post doesn't collide with its own slug.
+ */
+export async function uniqueSlug(input: string, excludeId?: string): Promise<string> {
   const base = slugify(input) || "post";
   const taken = await prisma.post.findMany({
-    where: { slug: { startsWith: base } },
+    where: { slug: { startsWith: base }, ...(excludeId && { id: { not: excludeId } }) },
     select: { slug: true },
   });
   const used = new Set(taken.map((p) => p.slug));

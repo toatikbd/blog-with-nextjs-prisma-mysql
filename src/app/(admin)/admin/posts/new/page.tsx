@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { createPost } from "@/actions/admin/post";
 import { PostForm } from "@/components/admin/post-form";
 import { requireStaff } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -33,5 +34,5 @@ async function NewPostForm() {
     prisma.tag.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
-  return <PostForm categories={categories} tags={tags} />;
+  return <PostForm action={createPost} categories={categories} tags={tags} />;
 }
