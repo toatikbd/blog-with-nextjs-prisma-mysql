@@ -1,10 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { canEditPost, requireStaff } from "@/lib/permissions";
+import { POSTS_TAG } from "@/lib/posts";
 import { prisma } from "@/lib/prisma";
 import { htmlToText, readingTime, sanitizePostHtml, uniqueSlug } from "@/lib/post-content";
 import { postSchema, type PostInput } from "@/lib/validations/post";
@@ -108,6 +109,8 @@ async function preparePost(formData: FormData, postId?: string): Promise<Prepare
 }
 
 function revalidatePosts() {
+  // Public pages read cached data tagged POSTS_TAG.
+  updateTag(POSTS_TAG);
   revalidatePath("/admin/posts");
   revalidatePath("/admin/categories");
   revalidatePath("/admin/tags");

@@ -1,10 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+// Aliased: this file exports its own `updateTag` action (edit a blog tag).
+import { revalidatePath, updateTag as expireCacheTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { requireAdmin } from "@/lib/permissions";
+import { POSTS_TAG } from "@/lib/posts";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/slug";
 import { tagSchema } from "@/lib/validations/tag";
@@ -33,6 +35,8 @@ function uniqueError(error: unknown): TagFormState["fieldErrors"] | null {
 }
 
 function revalidateTags() {
+  // Tag names appear on public post pages.
+  expireCacheTag(POSTS_TAG);
   revalidatePath("/admin/tags");
   revalidatePath("/admin/posts");
   revalidatePath("/");

@@ -1,10 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { requireAdmin } from "@/lib/permissions";
+import { POSTS_TAG } from "@/lib/posts";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/slug";
 import { categorySchema } from "@/lib/validations/category";
@@ -33,6 +34,8 @@ function uniqueError(error: unknown): CategoryFormState["fieldErrors"] | null {
 }
 
 function revalidateCategories() {
+  // Category names appear on public post pages and cards.
+  updateTag(POSTS_TAG);
   revalidatePath("/admin/categories");
   revalidatePath("/admin/posts");
   revalidatePath("/");

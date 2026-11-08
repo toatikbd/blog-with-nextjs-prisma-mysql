@@ -1,11 +1,12 @@
 "use server";
 
 import bcrypt from "bcryptjs";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { updateSession } from "@/lib/auth";
 import { requireStaff } from "@/lib/permissions";
+import { POSTS_TAG } from "@/lib/posts";
 import { prisma } from "@/lib/prisma";
 import { passwordSchema, profileSchema } from "@/lib/validations/settings";
 
@@ -43,6 +44,8 @@ export async function updateProfile(
     throw error;
   }
 
+  // Your name and bio appear on your public posts.
+  updateTag(POSTS_TAG);
   // The site header reads the name from the session cookie, so refresh it.
   await updateSession({});
   revalidatePath("/admin", "layout");

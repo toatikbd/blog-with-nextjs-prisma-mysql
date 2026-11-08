@@ -1,11 +1,12 @@
 "use server";
 
 import bcrypt from "bcryptjs";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { requireAdmin } from "@/lib/permissions";
+import { POSTS_TAG } from "@/lib/posts";
 import { prisma } from "@/lib/prisma";
 import { userCreateSchema, userUpdateSchema } from "@/lib/validations/user";
 
@@ -22,6 +23,8 @@ function isUniqueError(error: unknown) {
 }
 
 function revalidateUsers() {
+  // Author names and bios appear on public posts.
+  updateTag(POSTS_TAG);
   revalidatePath("/admin/users");
   revalidatePath("/admin/posts");
   revalidatePath("/admin/comments");
