@@ -38,18 +38,39 @@ const providers: NextAuthConfig["providers"] = [
 
 if (githubEnabled) providers.push(GitHub);
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const {
+  handlers,
+  auth,
+  signIn,
+  signOut,
+  unstable_update: updateSession,
+} = NextAuth({
   adapter: PrismaAdapter(prisma),
   // Credentials login requires JWT sessions. OAuth accounts are still stored via the adapter.
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers,
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       // `user` is only present right after signing in.
       if (user) {
         token.id = user.id;
         token.role = user.role ?? "USER";
+      }
+      // updateSession() (e.g. after editing the profile) refreshes the cookie.
+      // Reload from the database instead of trusting the update payload, which a
+      // client could also send.
+      if (trigger === "update" && token.id) {
+        const fresh = await prisma.user.findUnique({
+          where: { id: token.id },
+          select: { name: true, email: true, image: true, role: true },
+        });
+        if (fresh) {
+          token.name = fresh.name;
+          token.email = fresh.email;
+          token.picture = fresh.image;
+          token.role = fresh.role;
+        }
       }
       return token;
     },
